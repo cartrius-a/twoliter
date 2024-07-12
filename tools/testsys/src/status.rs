@@ -66,6 +66,13 @@ impl Status {
             })
             .await?;
 
+        status.new_column("ARCH", |crd| {
+            crd.labels()
+                .get("testsys/arch")
+                .cloned()
+                .into_iter()
+                .collect()
+        });
         status.add_column(StatusColumn::name());
         status.add_column(StatusColumn::crd_type());
         status.add_column(StatusColumn::state());
