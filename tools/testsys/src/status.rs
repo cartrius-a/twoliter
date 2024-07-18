@@ -9,7 +9,7 @@ use testsys_model::test_manager::{CrdState, CrdType, SelectionParams, StatusColu
 /// Check the status of testsys objects.
 #[derive(Debug, Parser)]
 pub(crate) struct Status {
-    /// Configure the output of the command (json, narrow, wide).
+    /// Configure the output of the command (json, simplejson, condensed, narrow, wide).
     #[arg(long, short = 'o')]
     output: Option<StatusOutput>,
 
@@ -126,6 +126,10 @@ impl Status {
 enum StatusOutput {
     /// Output the status in json
     Json,
+    /// Output the simplified status in json
+    SimpleJson,
+    /// Show condensed and simplified status table
+    Condensed,
     /// Show minimal columns in the status table
     Narrow,
     /// Show all columns in the status table
