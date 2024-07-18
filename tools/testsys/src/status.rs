@@ -80,8 +80,33 @@ impl Status {
         status.add_column(StatusColumn::failed());
         status.add_column(StatusColumn::skipped());
 
+        /// ** TYPE  ARCH   VARIANT  TEST-TYPE   STATE   PASSED   FAILED
+        status.add_column(StatusColumn::crd_type());
+        status.new_column("TEST-TYPE", |crd| {
+            crd.labels()
+                .get("testsys/type")
+                .cloned()
+                .into_iter()
+                .collect()
+        });
+        status.new_column("ARCH", |crd| {
+            crd.labels()
+                .get("testsys/arch")
+                .cloned()
+                .into_iter()
+                .collect()
+        });
+        status.add_column(StatusColumn::passed());
+        status.add_column(StatusColumn::failed());
+
         match self.output {
             Some(StatusOutput::Json) => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
                 info!(
                     "{}",
                     serde_json::to_string_pretty(&status).context(error::SerdeJsonSnafu {
@@ -90,8 +115,40 @@ impl Status {
                 );
                 return Ok(());
             }
-            Some(StatusOutput::Narrow) => (),
+            Some(StatusOutput::Condensed) => {
+                status.add_column(StatusColumn::crd_type());
+                status.new_column("TEST-TYPE", |crd| {
+                    crd.labels()
+                        .get("testsys/type")
+                        .cloned()
+                        .into_iter()
+                        .collect()
+                });
+                status.new_column("ARCH", |crd| {
+                    crd.labels()
+                        .get("testsys/arch")
+                        .cloned()
+                        .into_iter()
+                        .collect()
+                });
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+            }
+            Some(StatusOutput::Narrow) => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
+            },
             None => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
                 status.new_column("BUILD ID", |crd| {
                     crd.labels()
                         .get("testsys/build-id")
@@ -102,6 +159,12 @@ impl Status {
                 status.add_column(StatusColumn::last_update());
             }
             Some(StatusOutput::Wide) => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
                 status.new_column("BUILD ID", |crd| {
                     crd.labels()
                         .get("testsys/build-id")
@@ -111,6 +174,7 @@ impl Status {
                 });
                 status.add_column(StatusColumn::last_update());
             }
+
         };
 
         let (width, _) = term_size::dimensions().unwrap_or((80, 0));
