@@ -219,6 +219,15 @@ impl Status {
                 status.new_column("SKIPPED", |crd| {
                     extract_crd_data(crd)[6].clone()
                 });
+                status.new_column("VARIANT", |crd| {
+                    crd.labels()
+                        .get("testsys/variant")
+                        .cloned()
+                        .into_iter()
+                        .collect()
+                });
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
             }
             Some(StatusOutput::Narrow) => {
                 default_status();
