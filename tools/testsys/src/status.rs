@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use serde_plain::derive_fromstr_from_deserialize;
 use snafu::ResultExt;
 use std::collections::HashMap;
-use testsys_model::test_manager::{CrdState, CrdType, ResultType, crd_type, crd_results, SelectionParams, StatusColumn, TestManager};
+use testsys_model::test_manager::{CrdState, CrdType, ResultType, crd_type, crd_state, crd_results, SelectionParams, StatusColumn, TestManager};
 use testsys_model::Crd; // Unsure if this import is needed
 
 
