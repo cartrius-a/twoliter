@@ -205,16 +205,14 @@ impl Status {
             pretty_result
         }
 
-
-        status.add_column(StatusColumn::name());
-        status.add_column(StatusColumn::crd_type());
-        status.add_column(StatusColumn::state());
-        status.add_column(StatusColumn::passed());
-        status.add_column(StatusColumn::failed());
-        status.add_column(StatusColumn::skipped());
-
         match self.output {
             Some(StatusOutput::Json) => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
                 info!(
                     "{}",
                     serde_json::to_string_pretty(&status).context(error::SerdeJsonSnafu {
@@ -226,8 +224,32 @@ impl Status {
             Some(StatusOutput::SimpleJson) => {
                 println!("{}", create_simple_json(crd_vecs));
             }
-            Some(StatusOutput::Narrow) => (),
+            Some(StatusOutput::Condensed) => {
+                status.add_column(StatusColumn::condensed_crd_type());
+                status.add_column(StatusColumn::condensed_test_type());
+                status.add_column(StatusColumn::condensed_cluster());
+                status.add_column(StatusColumn::condensed_arch());
+                status.add_column(StatusColumn::condensed_variant());
+                status.add_column(StatusColumn::condensed_status());
+                status.add_column(StatusColumn::condensed_passed());
+                status.add_column(StatusColumn::condensed_failed());
+                status.add_column(StatusColumn::condensed_skipped());
+            }
+            Some(StatusOutput::Narrow) => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
+            },
             None => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
                 status.new_column("BUILD ID", |crd| {
                     crd.labels()
                         .get("testsys/build-id")
@@ -238,6 +260,12 @@ impl Status {
                 status.add_column(StatusColumn::last_update());
             }
             Some(StatusOutput::Wide) => {
+                status.add_column(StatusColumn::name());
+                status.add_column(StatusColumn::crd_type());
+                status.add_column(StatusColumn::state());
+                status.add_column(StatusColumn::passed());
+                status.add_column(StatusColumn::failed());
+                status.add_column(StatusColumn::skipped());
                 status.new_column("BUILD ID", |crd| {
                     crd.labels()
                         .get("testsys/build-id")
@@ -268,6 +296,8 @@ enum StatusOutput {
     Json,
     /// Output the status in a "simple" json format
     SimpleJson,
+    /// Show condensed output in the simplified status table
+    Condensed,
     /// Show minimal columns in the status table
     Narrow,
     /// Show all columns in the status table
