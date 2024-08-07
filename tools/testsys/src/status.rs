@@ -1,16 +1,18 @@
 use crate::error::{self, Result};
 use clap::Parser;
 use log::{debug, info};
+use prettytable::{format, Cell, Row, Table};
 use serde::Deserialize;
+use serde_json::json;
 use serde_plain::derive_fromstr_from_deserialize;
 use snafu::ResultExt;
-use testsys_model::test_manager::{
-    CrdState, CrdType, ResultType, crd_state, crd_results, SelectionParams, StatusColumn, TestManager,
-};
-use testsys_model::Crd;
-use serde_json::json;
 use std::collections::BTreeMap;
 use std::time::Duration;
+use testsys_model::test_manager::{
+    crd_results, crd_state, CrdState, CrdType, ResultType, SelectionParams, StatusColumn,
+    TestManager,
+};
+use testsys_model::Crd;
 use tokio::time::sleep;
 
 /// Check the status of testsys objects.
@@ -101,15 +103,17 @@ impl Status {
             crd_data.push(crd_type_data);
 
             // Extract test type data
-            let test_type_data = crd.labels()
+            let test_type_data = crd
+                .labels()
                 .get("testsys/type")
                 .cloned()
                 .into_iter()
                 .collect();
             crd_data.push(test_type_data);
 
-            // Extract test cluster data - index 2
-            let test_type_data = crd.labels()
+            // Extract test cluster data
+            let test_type_data = crd
+                .labels()
                 .get("testsys/cluster")
                 .cloned()
                 .into_iter()
@@ -117,7 +121,8 @@ impl Status {
             crd_data.push(test_type_data);
 
             // Extract arch data
-            let arch_data = crd.labels()
+            let arch_data = crd
+                .labels()
                 .get("testsys/arch")
                 .cloned()
                 .into_iter()
@@ -125,7 +130,8 @@ impl Status {
             crd_data.push(arch_data);
 
             // Extract variant data
-            let variant_data = crd.labels()
+            let variant_data = crd
+                .labels()
                 .get("testsys/variant")
                 .cloned()
                 .into_iter()
@@ -151,7 +157,8 @@ impl Status {
 
         fn create_simple_json(crd_vec: &Vec<Crd>) -> String {
             let mut result: Vec<BTreeMap<String, String>> = Vec::new();
-            let mut variant_data_map: BTreeMap<(String, String, String), BTreeMap<String, String>> = BTreeMap::new();
+            let mut variant_data_map: BTreeMap<(String, String, String), BTreeMap<String, String>> =
+                BTreeMap::new();
 
             for crd in crd_vec.clone() {
                 let curr_crd_data = extract_crd_data(&crd).clone();
@@ -224,6 +231,90 @@ impl Status {
             Some(StatusOutput::SimpleJson) => {
                 println!("{}", create_simple_json(crd_vecs));
             }
+            Some(StatusOutput::Chart) => {
+                let simple_json: String = create_simple_json(crd_vecs);
+
+                #[derive(Deserialize)]
+                struct TestResult {
+                    cluster: String,
+                    variant: String,
+                    arch: String,
+                    conformance: String,
+                    migration: String,
+                    smoke: String,
+                    karpenter: String,
+                    macis: String,
+                }
+
+                fn read_json_string(json_str: &str) -> Vec<TestResult> {
+                    serde_json::from_str(json_str).expect("Error parsing JSON")
+                }
+
+                let test_results = read_json_string(&simple_json);
+
+                fn color_result(result: &str) -> &'static str {
+                    match result {
+                        "pass" | "passed" | "Passed" => "FwBg",
+                        "error" | "fail" | "failed" | "Failed" => "FdBr",
+                        "ipv4" | "ipv6" => "FdBy",
+                        "skip" | "n/a" | "skipped" | "Skipped" => "FwBs",
+                        _ => "",
+                    }
+                }
+
+                let mut table = Table::new();
+
+                table.add_row(Row::new(vec![
+                    Cell::new("Cluster"),
+                    Cell::new("Variant"),
+                    Cell::new("Arch"),
+                    Cell::new("Conformance"),
+                    Cell::new("Migration"),
+                    Cell::new("Smoke"),
+                    Cell::new("Karpenter"),
+                    Cell::new("Macis"),
+                ]));
+
+                for result in test_results {
+                    table.add_row(Row::new(vec![
+                        Cell::new(&result.cluster),
+                        Cell::new(&result.variant),
+                        Cell::new(&result.arch),
+                        Cell::new(&result.conformance)
+                            .style_spec(color_result(&result.conformance)),
+                        Cell::new(&result.migration).style_spec(color_result(&result.migration)),
+                        Cell::new(&result.smoke).style_spec(color_result(&result.smoke)),
+                        Cell::new(&result.karpenter).style_spec(color_result(&result.karpenter)),
+                        Cell::new(&result.macis).style_spec(color_result(&result.macis)),
+                    ]));
+                }
+
+                table.set_format(
+                    format::FormatBuilder::new()
+                        .column_separator('│')
+                        .borders('│')
+                        .separators(
+                            &[format::LinePosition::Top],
+                            format::LineSeparator::new('─', '┬', '┌', '┐'),
+                        )
+                        .separators(
+                            &[format::LinePosition::Top],
+                            format::LineSeparator::new('─', '┬', '┌', '┐'),
+                        )
+                        .separators(
+                            &[format::LinePosition::Intern],
+                            format::LineSeparator::new('─', '┼', '├', '┤'),
+                        )
+                        .separators(
+                            &[format::LinePosition::Bottom],
+                            format::LineSeparator::new('─', '┴', '└', '┘'),
+                        )
+                        .padding(1, 1)
+                        .build(),
+                );
+
+                table.printstd();
+            }
             Some(StatusOutput::Condensed) => {
                 status.add_column(StatusColumn::condensed_crd_type());
                 status.add_column(StatusColumn::condensed_test_type());
@@ -242,7 +333,7 @@ impl Status {
                 status.add_column(StatusColumn::passed());
                 status.add_column(StatusColumn::failed());
                 status.add_column(StatusColumn::skipped());
-            },
+            }
             None => {
                 status.add_column(StatusColumn::name());
                 status.add_column(StatusColumn::crd_type());
@@ -298,6 +389,8 @@ enum StatusOutput {
     SimpleJson,
     /// Show condensed output in the simplified status table
     Condensed,
+    /// Display a chart of the testsys results
+    Chart,
     /// Show minimal columns in the status table
     Narrow,
     /// Show all columns in the status table
