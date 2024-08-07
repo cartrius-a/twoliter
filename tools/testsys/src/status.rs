@@ -4,7 +4,12 @@ use log::{debug, info};
 use serde::Deserialize;
 use serde_plain::derive_fromstr_from_deserialize;
 use snafu::ResultExt;
-use testsys_model::test_manager::{CrdState, CrdType, SelectionParams, StatusColumn, TestManager};
+use testsys_model::test_manager::{
+    CrdState, CrdType, ResultType, crd_state, crd_results, SelectionParams, StatusColumn, TestManager,
+};
+use testsys_model::Crd;
+use serde_json::json;
+use std::collections::BTreeMap;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -87,6 +92,120 @@ impl Status {
             })
             .await?;
 
+        // Extract data from one CRD
+        fn extract_crd_data(crd: &Crd) -> Vec<Vec<String>> {
+            let mut crd_data = Vec::new();
+
+            // Extract crd type data
+            let crd_type_data: Vec<String> = testsys_model::test_manager::crd_type(crd);
+            crd_data.push(crd_type_data);
+
+            // Extract test type data
+            let test_type_data = crd.labels()
+                .get("testsys/type")
+                .cloned()
+                .into_iter()
+                .collect();
+            crd_data.push(test_type_data);
+
+            // Extract test cluster data - index 2
+            let test_type_data = crd.labels()
+                .get("testsys/cluster")
+                .cloned()
+                .into_iter()
+                .collect();
+            crd_data.push(test_type_data);
+
+            // Extract arch data
+            let arch_data = crd.labels()
+                .get("testsys/arch")
+                .cloned()
+                .into_iter()
+                .collect();
+            crd_data.push(arch_data);
+
+            // Extract variant data
+            let variant_data = crd.labels()
+                .get("testsys/variant")
+                .cloned()
+                .into_iter()
+                .collect();
+            crd_data.push(variant_data);
+
+            // Extract current status data
+            let status_data: Vec<String> = crd_state(crd);
+            crd_data.push(status_data);
+
+            // Extract passed, failed, and skipped data
+            let passed_data = crd_results(crd, ResultType::Passed);
+            let failed_data = crd_results(crd, ResultType::Failed);
+            let skipped_data = crd_results(crd, ResultType::Skipped);
+            crd_data.push(passed_data);
+            crd_data.push(failed_data);
+            crd_data.push(skipped_data);
+
+            crd_data
+        }
+
+        let crd_vecs = status.use_crds();
+
+        fn create_simple_json(crd_vec: &Vec<Crd>) -> String {
+            let mut result: Vec<BTreeMap<String, String>> = Vec::new();
+            let mut variant_data_map: BTreeMap<(String, String, String), BTreeMap<String, String>> = BTreeMap::new();
+
+            for crd in crd_vec.clone() {
+                let curr_crd_data = extract_crd_data(&crd).clone();
+                if curr_crd_data[0][0] == "Test" {
+                    let variant = curr_crd_data[4][0].clone();
+                    let arch = curr_crd_data[3][0].clone();
+                    let test_type = curr_crd_data[1][0].clone();
+                    let status = curr_crd_data[5][0].clone();
+                    let cluster = curr_crd_data[2][0].clone();
+
+                    let key = (variant.clone(), arch.clone(), cluster.clone());
+                    if !variant_data_map.contains_key(&key) {
+                        let mut variant_data: BTreeMap<String, String> = BTreeMap::new();
+                        variant_data.insert("variant".to_string(), variant.clone());
+                        variant_data.insert("arch".to_string(), arch.clone());
+                        variant_data.insert("cluster".to_string(), cluster.clone());
+                        variant_data.insert("conformance".to_string(), "n/a".to_string());
+                        variant_data.insert("migration".to_string(), "n/a".to_string());
+                        variant_data.insert("smoke".to_string(), "n/a".to_string());
+                        variant_data.insert("karpenter".to_string(), "n/a".to_string());
+                        variant_data.insert("macis".to_string(), "n/a".to_string());
+                        variant_data_map.insert(key.clone(), variant_data);
+                    }
+
+                    let variant_data = variant_data_map.get_mut(&key).unwrap();
+                    if test_type == "conformance" {
+                        variant_data.insert("conformance".to_string(), status);
+                    } else if test_type == "migration" {
+                        variant_data.insert("migration".to_string(), status.clone());
+                        if status == "waiting" || status == "error" {
+                            variant_data.insert("migration".to_string(), "failed".to_string());
+                        }
+                    } else if test_type == "smoke" {
+                        variant_data.insert("smoke".to_string(), status);
+                    } else if test_type == "karpenter" {
+                        variant_data.insert("karpenter".to_string(), status);
+                    } else if test_type == "macis" {
+                        variant_data.insert("macis".to_string(), status);
+                    } else {
+                        variant_data.insert(test_type, status);
+                    }
+                }
+            }
+
+            for (_, variant_data) in variant_data_map {
+                result.push(variant_data);
+            }
+
+            let final_result = json!(result);
+            let pretty_result: String = serde_json::to_string_pretty(&final_result).unwrap();
+            pretty_result
+        }
+
+
         status.add_column(StatusColumn::name());
         status.add_column(StatusColumn::crd_type());
         status.add_column(StatusColumn::state());
@@ -103,6 +222,9 @@ impl Status {
                     })?
                 );
                 return Ok(());
+            }
+            Some(StatusOutput::SimpleJson) => {
+                println!("{}", create_simple_json(crd_vecs));
             }
             Some(StatusOutput::Narrow) => (),
             None => {
@@ -144,6 +266,8 @@ fn clear_screen() {
 enum StatusOutput {
     /// Output the status in json
     Json,
+    /// Output the status in a "simple" json format
+    SimpleJson,
     /// Show minimal columns in the status table
     Narrow,
     /// Show all columns in the status table
